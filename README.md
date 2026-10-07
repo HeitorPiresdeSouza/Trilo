@@ -7,7 +7,9 @@
 
 **| Nome Completo | 3DI 2026 | GitHub |**
 | Heitor Pires de Souza | 3DI-B 2026 |
+
 | Ana Luiza Martins Lima | 3DI-B 2026 |
+
 | Heitor Pires de Souza | 3DI-B 2026 |
 
 ## 📌 Sobre o Projeto
