@@ -6,6 +6,7 @@
 > ## 👥 Integrantes do Grupo
 
 **| Nome Completo | 3DI 2026 | GitHub |**
+
 | Heitor Pires de Souza | 3DI-B 2026 |
 
 | Ana Luiza Martins Lima | 3DI-B 2026 |
@@ -25,31 +26,48 @@ prazo, a iniciativa visa consolidar um ambiente físico mais organizado, elevar 
 satisfação dos usuários e otimizar a alocação dos recursos humanos da equipe.
 
 ### 🛠️ Tecnologias Utilizadas
-- **Linguagem: JavaScript / Java 
+- **Linguagem: JavaScript / Java
+  
 - **Frameworks:** Angular / Spring Boot
+
 - **Banco de Dados:** MySQL
+  
 - **Outras ferramentas:** Docker
 
 ## 🚀 Como Executar o Projeto
 
 ### Pré-requisitos
 **Java JDK** — para executar o backend Java.
+
 **Maven** — para gerenciar as dependências do Java.
+
 **Docker** Desktop — para executar os containers do projeto.
+
 **Git** — para baixar e gerenciar o código do projeto.
+
 **VS Code, NetBeans** — para abrir e editar o projeto.
+
 **Navegador** — para acessar a aplicação.
+
 **HTML** — estrutura das páginas.
+
 **CSS** — estilização das páginas.
+
 **JavaScript (JS)** — funcionalidades e interações do frontend.
+
 **Banco de dados** — MySQL (Integrado).
+
 **Conexão com a internet** — necessária para baixar dependências e imagens, caso o projeto precise.
 
 # Exemplo de comando de verificação dos Pré-requisitos
 java -version
+
 mvn -version
+
 docker --version
+
 git --version
+
 mysql --version
 
 ## 📝 O que foi feito nesta entrega?
@@ -63,8 +81,11 @@ Atualização de documentação do projeto.
 
 ## 👥 Integrantes que trabalharam nesta task
 Heitor
+
 Ana Luiza
+
 Ana Júlia
+
 
 ## 🧪 Testes realizados
 - [ ] Testes unitários executados e passando
