@@ -5,38 +5,42 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
-import java.util.Objects;
+import java.math.BigDecimal;
 
 @Entity
 public class Produto {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    
-    @Size(max=60)
+
+    @Size(max = 60)
     private String name;
-    
+
     @NotBlank
-    @Size(max=60)
+    @Size(max = 60)
     private String descricao;
-    
+
     @NotBlank
-    @Size(max=40)
+    @Size(max = 40)
     private String categoria;
-    
+
     private String imagem;
-    
+
     private Double qtd;
-    
-    private Double valor;
 
-    public Produto(){
-    
+    // BigDecimal: Double acumula erro de arredondamento e quebra a conversão para centavos
+    @NotNull
+    @PositiveOrZero
+    private BigDecimal valor;
+
+    public Produto() {
     }
 
-    public Produto(Long id, String name, String descricao, String categoria, String imagem, Double qtd, Double valor) {
+    public Produto(Long id, String name, String descricao, String categoria, String imagem, Double qtd, BigDecimal valor) {
         this.id = id;
         this.name = name;
         this.descricao = descricao;
@@ -46,105 +50,38 @@ public class Produto {
         this.valor = valor;
     }
 
-    public Long getId() {
-        return id;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 
-    public String getName() {
-        return name;
-    }
+    public String getDescricao() { return descricao; }
+    public void setDescricao(String descricao) { this.descricao = descricao; }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+    public String getCategoria() { return categoria; }
+    public void setCategoria(String categoria) { this.categoria = categoria; }
 
-    public String getDescricao() {
-        return descricao;
-    }
+    public String getImagem() { return imagem; }
+    public void setImagem(String imagem) { this.imagem = imagem; }
 
-    public void setDescricao(String descricao) {
-        this.descricao = descricao;
-    }
+    public Double getQtd() { return qtd; }
+    public void setQtd(Double qtd) { this.qtd = qtd; }
 
-    public String getCategoria() {
-        return categoria;
-    }
+    public BigDecimal getValor() { return valor; }
+    public void setValor(BigDecimal valor) { this.valor = valor; }
 
-    public void setCategoria(String categoria) {
-        this.categoria = categoria;
-    }
-
-    public String getImagem() {
-        return imagem;
-    }
-
-    public void setImagem(String imagem) {
-        this.imagem = imagem;
-    }
-
-    public Double getQtd() {
-        return qtd;
-    }
-
-    public void setQtd(Double qtd) {
-        this.qtd = qtd;
-    }
-
-    public Double getValor() {
-        return valor;
-    }
-
-    public void setValor(Double valor) {
-        this.valor = valor;
-    }
-
+    // equals/hashCode por id: os anteriores davam NullPointerException com id nulo
     @Override
     public int hashCode() {
-        int hash = 5;
-        hash = 41 * hash + (int) (this.id ^ (this.id >>> 32));
-        hash = 41 * hash + Objects.hashCode(this.name);
-        hash = 41 * hash + Objects.hashCode(this.descricao);
-        hash = 41 * hash + Objects.hashCode(this.categoria);
-        hash = 41 * hash + Objects.hashCode(this.imagem);
-        hash = 41 * hash + Objects.hashCode(this.qtd);
-        hash = 41 * hash + Objects.hashCode(this.valor);
-        return hash;
+        return getClass().hashCode();
     }
 
     @Override
     public boolean equals(Object obj) {
-        if (this == obj) {
-            return true;
-        }
-        if (obj == null) {
-            return false;
-        }
-        if (getClass() != obj.getClass()) {
-            return false;
-        }
-        final Produto other = (Produto) obj;
-        if (this.id != other.id) {
-            return false;
-        }
-        if (!Objects.equals(this.name, other.name)) {
-            return false;
-        }
-        if (!Objects.equals(this.descricao, other.descricao)) {
-            return false;
-        }
-        if (!Objects.equals(this.categoria, other.categoria)) {
-            return false;
-        }
-        if (!Objects.equals(this.imagem, other.imagem)) {
-            return false;
-        }
-        if (!Objects.equals(this.qtd, other.qtd)) {
-            return false;
-        }
-        return Objects.equals(this.valor, other.valor);
-    }    
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        Produto other = (Produto) obj;
+        return id != null && id.equals(other.id);
+    }
 }

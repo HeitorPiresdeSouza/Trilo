@@ -1,5 +1,6 @@
 package br.eti.hpds.fastFurious.pagamento;
 
+import br.eti.hpds.fastFurious.domain.model.OpcaoPagamento;
 import java.math.BigDecimal;
 
 /**
@@ -7,6 +8,13 @@ import java.math.BigDecimal;
  * então trocar de adquirente significa criar outra implementação.
  */
 public interface PagamentoTerminal {
-    ResultadoPagamento cobrar(BigDecimal valor, TipoPagamento tipo, String referencia);
+
+    /** Envia a cobrança para a maquininha. Devolve o id da transação na adquirente. */
+    ResultadoPagamento cobrar(BigDecimal valor, OpcaoPagamento tipo, String referencia);
+
+    /** Consulta na adquirente a situação atual da cobrança. */
+    StatusPagamento consultar(String transacaoId);
+
     void cancelar(String transacaoId);
+
 }

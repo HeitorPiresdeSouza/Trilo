@@ -7,7 +7,7 @@ public enum OpcaoPagamento {
     CARTAO_CREDITO,
     CARTAO_DEBITO,
     DINHEIRO;
-    
+
     @JsonCreator
     public static OpcaoPagamento fromString(String valor) {
         for (OpcaoPagamento tipo : OpcaoPagamento.values()) {
@@ -15,6 +15,6 @@ public enum OpcaoPagamento {
                 return tipo;
             }
         }
-        throw new IllegalArgumentException("Tipo de consumo inválido: " + valor);
+        throw new IllegalArgumentException("Opção de pagamento inválida: " + valor);
     }
 }

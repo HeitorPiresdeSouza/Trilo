@@ -37,7 +37,9 @@ public class PagamentoWebhookController {
         NotificacaoPagamento n = mapper.readValue(corpo, NotificacaoPagamento.class);
 
         // confirmarPagamento DEVE ser idempotente: o webhook pode chegar repetido.
-        pedidos.confirmarPagamento(n.referencia(), n.status());
+        Long pedidoId = Long.valueOf(n.referencia());
+        pedidos.confirmarPagamento(pedidoId);
+        
         return ResponseEntity.ok().build();
     }
 }

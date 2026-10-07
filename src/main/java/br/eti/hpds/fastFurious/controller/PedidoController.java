@@ -110,6 +110,18 @@ public class PedidoController {
 
     }
 
+    @PutMapping("/pedido/confirmarPagamentoDinheiro/{pedidoID}")
+    @Operation(summary = "Confirma pagamento em dinheiro", description = "O atendente confirma o recebimento; o pedido passa de AGUARDANDO_PAGAMENTO para ABERTO")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Payment confirmed"),
+        @ApiResponse(responseCode = "404", description = "Not found - The order was not found")}
+    )
+    public ResponseEntity<Pedido> confirmarPagamentoDinheiro(@PathVariable Long pedidoID) {
+        return pedidoService.confirmarPagamentoDinheiro(pedidoID)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @PutMapping("/pedido/{pedidoID}")
     @Operation(summary = "Atualiza um determinado Pedido ", description = "Atualização de um Pedido na base de dados")
     @ApiResponses(value = {

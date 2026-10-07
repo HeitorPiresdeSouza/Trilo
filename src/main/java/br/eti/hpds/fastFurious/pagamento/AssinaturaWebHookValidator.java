@@ -16,11 +16,11 @@ import org.springframework.stereotype.Component;
  * (header, algoritmo, hex/base64) depende da adquirente. Confirme na documentação.
  */
 @Component
-public class AssinaturaWebHookValidator {
+public class AssinaturaWebhookValidator {
 
     private final byte[] segredo;
 
-    public AssinaturaWebHookValidator(@Value("${pagamento.webhook.segredo}") String segredo) {
+    public AssinaturaWebhookValidator(@Value("${pagamento.webhook.segredo}") String segredo) {
         this.segredo = segredo.getBytes(StandardCharsets.UTF_8);
     }
 

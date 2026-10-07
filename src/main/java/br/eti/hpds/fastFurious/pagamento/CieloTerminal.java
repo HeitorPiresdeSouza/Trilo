@@ -1,5 +1,6 @@
 package br.eti.hpds.fastFurious.pagamento;
 
+import br.eti.hpds.fastFurious.domain.model.OpcaoPagamento;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -21,7 +22,6 @@ public class CieloTerminal implements PagamentoTerminal {
     private final RestClient http;
 
     public CieloTerminal(RestClient.Builder builder,
-                         // Sandbox: https://api.cielo.com.br/sandbox-lio/order-management/v1
                          @Value("${cielo.base-url:https://api.cielo.com.br/order-management/v1}") String baseUrl,
                          @Value("${cielo.client-id}") String clientId,
                          @Value("${cielo.access-token}") String token,
@@ -35,14 +35,14 @@ public class CieloTerminal implements PagamentoTerminal {
     }
 
     @Override
-    public ResultadoPagamento cobrar(BigDecimal valor, TipoPagamento tipo, String referencia) {
+    public ResultadoPagamento cobrar(BigDecimal valor, OpcaoPagamento tipo, String referencia) {
         long centavos = valor.movePointRight(2).longValueExact(); // R$ 10,00 -> 1000
 
         Map<String, Object> pedido = new HashMap<>();
-        pedido.put("number", referencia);          // id do pedido no SEU sistema
+        pedido.put("number", referencia);         // id do pedido no SEU sistema
         pedido.put("reference", "PED-" + referencia);
         pedido.put("status", "DRAFT");             // padrão da API; PLACE é feito em seguida
-        pedido.put("price", centavos);             // número, em centavos (como no exemplo da Cielo)
+        pedido.put("price", centavos);             // número, em centavos
         pedido.put("items", List.of(Map.of(
                 "sku", referencia,
                 "name", "Pedido " + referencia,
@@ -51,56 +51,43 @@ public class CieloTerminal implements PagamentoTerminal {
                 "unit_of_measure", "EACH")));
         pedido.put("transactions", List.of());     // obrigatório no corpo, mas vazio na criação
 
-        // payment_code define a forma de pagamento já na criação do pedido.
-        // Sem ele, o operador escolhe na maquininha. Só funciona nos terminais da Nova Smart
-        // (L300 V4, L400, DX800); na L300 V3 (LIO) payment_code e installments são ignorados.
         String paymentCode = paymentCode(tipo);
         if (paymentCode != null) {
             pedido.put("payment_code", paymentCode);
         }
-        // installments: "0" = à vista. Débito e crédito à vista usam 0.
-        if (tipo == TipoPagamento.DEBITO || tipo == TipoPagamento.CREDITO) {
+        
+        if (tipo == OpcaoPagamento.CARTAO_DEBITO || tipo == OpcaoPagamento.CARTAO_CREDITO) {
             pedido.put("installments", "0");
         }
 
-        // 1) Cria o pedido (resposta 201). Assumo que o JSON traz o "id" (UUID): a doc
-        //    não mostrou o exemplo de resposta, então confira no "Try It" do sandbox.
         Map<String, Object> criado = http.post().uri("/orders").body(pedido)
                 .retrieve().body(new ParameterizedTypeReference<Map<String, Object>>() {});
         String id = String.valueOf(criado.get("id"));
 
-        // 2) PLACE: libera o pedido para pagamento, exibindo-o na Cielo Smart.
         http.put().uri("/orders/{id}?operation=PLACE", id).retrieve().toBodilessEntity();
 
-        return new ResultadoPagamento(id, "PENDENTE");
+        // Passando o status correspondente (ajuste para o construtor correto do seu ResultadoPagamento)
+        return new ResultadoPagamento(id, StatusPagamento.PENDENTE);
     }
 
-
-    /**
-     * Traduz o seu enum para o payment_code da Cielo.
-     * ATENÇÃO: a documentação de Entidades não lista os valores aceitos. Os códigos abaixo
-     * seguem o padrão do SDK da Cielo LIO e PRECISAM ser confirmados na página
-     * "Criar um pedido". Ajuste os cases aos nomes do seu enum.
-     * Retornar null deixa a escolha para o operador na maquininha.
-     */
-    private String paymentCode(TipoPagamento tipo) {
+    private String paymentCode(OpcaoPagamento tipo) {
         if (tipo == null) return null;
         return switch (tipo) {
-            case DEBITO  -> "DEBITO_AVISTA";
-            case CREDITO -> "CREDITO_AVISTA";   // à vista; parcelado seria outro código
-            case PIX     -> "PIX";
+            case CARTAO_DEBITO  -> "DEBITO_AVISTA";
+            case CARTAO_CREDITO -> "CREDITO_AVISTA";
+            case PIX            -> "PIX";
+            default             -> null; // Garante que cobre qualquer outro valor do enum
         };
     }
 
-    /** Consulta o pedido pelo seu número. Use para confirmar PAID sem confiar só em notificação. */
-    public String consultarPedido(String numero) {
-        return http.get().uri("/orders?number={n}", numero).retrieve().body(String.class);
+    @Override
+    public StatusPagamento consultar(String transacaoId) {
+        String resposta = http.get().uri("/orders/{id}", transacaoId).retrieve().body(String.class);
+        return StatusPagamento.valueOf(resposta);
     }
 
     @Override
     public void cancelar(String transacaoId) {
-        // O endpoint "Alterar status" só aceita PLACE, PAY e CLOSE: não cancela.
-        // Falta descobrir com a Cielo como cancelar/estornar.
         throw new UnsupportedOperationException("Cancelamento ainda não implementado");
     }
 }
