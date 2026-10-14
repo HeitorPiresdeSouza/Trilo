@@ -11,7 +11,7 @@
 
 | Ana Luiza Martins Lima | 3DI-B 2026 |
 
-| Heitor Pires de Souza | 3DI-B 2026 |
+| Ana Júlia Maciel do Prado | 3DI-B 2026 |
 
 ## 📌 Sobre o Projeto
 
