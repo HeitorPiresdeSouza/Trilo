@@ -4,6 +4,7 @@ import br.eti.hpds.fastFurious.domain.dto.AtualizaStatusDTO;
 import br.eti.hpds.fastFurious.domain.model.Pedido;
 import br.eti.hpds.fastFurious.domain.model.StatusPedido;
 import br.eti.hpds.fastFurious.domain.repository.PedidoRepository;
+import br.eti.hpds.fastFurious.service.BematechService;
 import br.eti.hpds.fastFurious.service.PedidoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -27,6 +28,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class PedidoController {
 
+    // Injete o serviço da impressora junto com os outros serviços que você já tem
+    @Autowired
+    private BematechService bematechService;
+    
     @Autowired
     private PedidoRepository pedidoRepository;
 
@@ -78,25 +83,32 @@ public class PedidoController {
 
             return ResponseEntity.ok(lista);
     }
-
+    
     @PostMapping("/pedido")
-    @Operation(summary = "Publica um determinada Pedido", description = "Publicação de um Pedido na base de dados")
+    @Operation(summary = "Publica um determinado Pedido", description = "Publicação de um Pedido na base de dados e impressão do cupom")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "201", description = "Successfully posted"),
         @ApiResponse(responseCode = "422", description = "The format is correct, but the data failed the business rule")}
     )
     @ResponseStatus(HttpStatus.CREATED)
-    public Pedido criar(@Valid @RequestBody Pedido pedido) {
+    public Pedido criar(@Valid @RequestBody Pedido pedidoRequest) {
+        
+        // 1. Salva o pedido usando a regra de negócio
+        Pedido pedidoSalvo = pedidoService.criar(pedidoRequest);
 
-        return pedidoService.criar(pedido);
+        try {
+            // 2. Monta o texto do cupom
+            String textoCupom = bematechService.montarTextoCupom(pedidoSalvo);
+
+            // 3. Envia para a impressora térmica na COM1
+            bematechService.imprimirTexto(textoCupom);
+        } catch (Exception e) {
+            System.err.println("Aviso: O pedido foi salvo, mas a impressão falhou: " + e.getMessage());
+        }
+
+        // 4. Retorna o pedido salvo com status 201 Created
+        return pedidoSalvo;
     }
-
-    @PutMapping("/pedido/atualizaStatus/{pedidoID}")
-    @Operation(summary = "Atualiza o status de um Pedido determinado ", description = "Atualização de um status na base de dados")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "Successfully updated"),
-        @ApiResponse(responseCode = "404", description = "Not found - The product was not found")}
-    )
     public ResponseEntity<Pedido> atualizarStatus(@Valid @PathVariable Long pedidoID,
             @RequestBody AtualizaStatusDTO atualizaStatusDTO) {
 

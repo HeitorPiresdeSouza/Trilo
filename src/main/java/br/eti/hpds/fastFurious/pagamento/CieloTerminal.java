@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import org.springframework.web.client.RestClient;
  * Fluxo: criar pedido (POST /orders) -> liberar para pagamento (PUT ?operation=PLACE)
  * -> cliente paga na maquininha -> consultar (GET) até o status virar PAID.
  */
+@Primary
 @Service
 public class CieloTerminal implements PagamentoTerminal {
 
