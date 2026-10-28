@@ -7,9 +7,10 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Primary;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -19,9 +20,11 @@ import org.springframework.web.client.RestClient;
  * Integração Remota da Cielo (Order Manager).
  * Fluxo: criar pedido (POST /orders) -> liberar para pagamento (PUT ?operation=PLACE)
  * -> cliente paga na maquininha -> consultar (GET) até o status virar PAID.
+ * Só é criado com pagamento.terminal=cielo-remoto (o padrão agora é o app da maquininha).
  */
-@Primary
 @Service
+@Qualifier("cieloTerminal")
+@ConditionalOnProperty(name = "pagamento.terminal", havingValue = "cielo-remoto")
 public class CieloTerminal implements PagamentoTerminal {
 
     private static final ParameterizedTypeReference<Map<String, Object>> MAPA =
@@ -140,3 +143,4 @@ public class CieloTerminal implements PagamentoTerminal {
         throw new UnsupportedOperationException("Cancelamento ainda não implementado");
     }
 }
+

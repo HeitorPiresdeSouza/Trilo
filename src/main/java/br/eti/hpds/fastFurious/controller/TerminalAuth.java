@@ -26,7 +26,7 @@ public class TerminalAuth {
         boolean ok = recebido != null
                 && MessageDigest.isEqual(token, recebido.getBytes(StandardCharsets.UTF_8));
         if (!ok) {
-            throw new RegraNegocioException(HttpStatus.UNAUTHORIZED, "Token do terminal inválido");
+            throw new RegraNegocioException(HttpStatus.UNAUTHORIZED, "Token do terminal invÃ¡lido");
         }
     }
 }

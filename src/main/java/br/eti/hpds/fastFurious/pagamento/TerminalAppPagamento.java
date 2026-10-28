@@ -58,3 +58,4 @@ public class TerminalAppPagamento implements PagamentoTerminal {
         throw new UnsupportedOperationException("Cancelamento ainda não implementado");
     }
 }
+

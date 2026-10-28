@@ -75,3 +75,4 @@ public class CobrancaTerminal {
     public LocalDateTime getAtualizadaEm() { return atualizadaEm; }
     public void setAtualizadaEm(LocalDateTime atualizadaEm) { this.atualizadaEm = atualizadaEm; }
 }
+

@@ -8,3 +8,4 @@ public enum StatusCobranca {
     RECUSADA,      // recusado, cancelado pelo cliente ou erro
     PARCIAL        // valor pago diferente do esperado: exige tratamento manual
 }
+
