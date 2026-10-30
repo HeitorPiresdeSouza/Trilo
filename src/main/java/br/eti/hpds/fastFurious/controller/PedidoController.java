@@ -31,7 +31,7 @@ public class PedidoController {
     // Injete o serviço da impressora junto com os outros serviços que você já tem
     @Autowired
     private BematechService bematechService;
-    
+
     @Autowired
     private PedidoRepository pedidoRepository;
 
@@ -72,18 +72,18 @@ public class PedidoController {
         @ApiResponse(responseCode = "404", description = "Not found - The product was not found")}
     )
     public ResponseEntity<List<Pedido>> buscarByStatus(@PathVariable String status) {
-        
-            StatusPedido statusEnum = StatusPedido.valueOf(status.toUpperCase());
 
-            List<Pedido> lista = pedidoRepository.findByStatus(statusEnum);
+        StatusPedido statusEnum = StatusPedido.valueOf(status.toUpperCase());
 
-            if (lista.isEmpty()) {
-                return ResponseEntity.noContent().build();
-            }
+        List<Pedido> lista = pedidoRepository.findByStatus(statusEnum);
 
-            return ResponseEntity.ok(lista);
+        if (lista.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+
+        return ResponseEntity.ok(lista);
     }
-    
+
     @PostMapping("/pedido")
     @Operation(summary = "Publica um determinado Pedido", description = "Publicação de um Pedido na base de dados e impressão do cupom")
     @ApiResponses(value = {
@@ -92,15 +92,14 @@ public class PedidoController {
     )
     @ResponseStatus(HttpStatus.CREATED)
     public Pedido criar(@Valid @RequestBody Pedido pedidoRequest) {
-        
+
         // 1. Salva o pedido usando a regra de negócio
         Pedido pedidoSalvo = pedidoService.criar(pedidoRequest);
 
         try {
             // 2. Monta o texto do cupom
             String textoCupom = bematechService.montarTextoCupom(pedidoSalvo);
-
-            // 3. Envia para a impressora térmica na COM1
+            
             bematechService.imprimirTexto(textoCupom);
         } catch (Exception e) {
             System.err.println("Aviso: O pedido foi salvo, mas a impressão falhou: " + e.getMessage());
@@ -109,6 +108,7 @@ public class PedidoController {
         // 4. Retorna o pedido salvo com status 201 Created
         return pedidoSalvo;
     }
+
     public ResponseEntity<Pedido> atualizarStatus(@Valid @PathVariable Long pedidoID,
             @RequestBody AtualizaStatusDTO atualizaStatusDTO) {
 

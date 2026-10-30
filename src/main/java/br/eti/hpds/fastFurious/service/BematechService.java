@@ -2,11 +2,9 @@ package br.eti.hpds.fastfurious.service;
 
 import br.eti.hpds.fastFurious.domain.model.ItemPedido;
 import br.eti.hpds.fastFurious.domain.model.Pedido;
+import com.fazecast.jSerialComm.SerialPort;
 import org.springframework.stereotype.Service;
 
-import javax.print.*;
-import javax.print.attribute.HashPrintRequestAttributeSet;
-import javax.print.attribute.PrintRequestAttributeSet;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
@@ -14,29 +12,32 @@ import java.time.format.DateTimeFormatter;
 @Service
 public class BematechService {
 
+    // Atualizado para a porta correta detetada pelo sistema
+    private static final String PORT_NAME = "COM1";
+
     /**
-     * Monta o texto formatado do cupom com margem à esquerda para não cortar.
+     * Monta o texto formatado do cupom com margem à esquerda e avanço extra no final.
      */
     public String montarTextoCupom(Pedido pedido) {
         StringBuilder sb = new StringBuilder();
         
         // Margem esquerda (espaços adicionados no início de cada linha)
-        String margem = " "; 
+        String margem = "   "; 
 
         sb.append(margem).append("========================================\n");
-        sb.append(margem).append("                 TRILO                  \n");
+        sb.append(margem).append("             FAST & FURIOUS             \n");
         sb.append(margem).append("========================================\n");
-        sb.append(margem).append("    Pedido #: ").append(pedido.getId()).append("\n");
+        sb.append(margem).append("Pedido #: ").append(pedido.getId()).append("\n");
 
         if (pedido.getDataAbertura() != null) {
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
-            sb.append(margem).append("    Data: ").append(pedido.getDataAbertura().format(formatter)).append("\n");
+            sb.append(margem).append("Data: ").append(pedido.getDataAbertura().format(formatter)).append("\n");
         }
 
-        sb.append(margem).append("    Consumo: ").append(pedido.getConsumo()).append("\n");
-        sb.append(margem).append("    Pagamento: ").append(pedido.getPagamento()).append("\n");
+        sb.append(margem).append("Consumo: ").append(pedido.getConsumo()).append("\n");
+        sb.append(margem).append("Pagamento: ").append(pedido.getPagamento()).append("\n");
         sb.append(margem).append("----------------------------------------\n");
-        sb.append(margem).append("    QTD  ITEM                  VALOR    \n");
+        sb.append(margem).append("QTD  ITEM                       VALOR   \n");
         sb.append(margem).append("----------------------------------------\n");
 
         if (pedido.getListaItens() != null) {
@@ -61,47 +62,51 @@ public class BematechService {
 
         sb.append(margem).append("----------------------------------------\n");
         double valorTotalDouble = pedido.getValorTotal() != null ? pedido.getValorTotal().doubleValue() : 0.0;
-        sb.append(margem).append(String.format("    TOTAL:                  R$%8.2f\n\n\n\n", valorTotalDouble));
+        sb.append(margem).append(String.format("TOTAL:                     R$%8.2f\n", valorTotalDouble));
         sb.append(margem).append("========================================\n");
-        sb.append(margem).append("       Obrigado pela preferencia!       \n\n\n\n");
+        sb.append(margem).append("       Obrigado pela preferencia!       \n");
         
+        // Linhas em branco no final para forçar o avanço do papel
         sb.append("\n\n\n\n\n\n\n");
 
         return sb.toString();
     }
 
     /**
-     * Envia o texto utilizando a impressora do Windows (Spooler).
+     * Envia os bytes do cupom diretamente para a porta serial COM1.
      */
     public void imprimirTexto(String textoParaImprimir) {
+        SerialPort comPort = SerialPort.getCommPort(PORT_NAME);
+
+        comPort.setBaudRate(9600);
+        comPort.setNumDataBits(8);
+        comPort.setNumStopBits(SerialPort.ONE_STOP_BIT);
+        comPort.setParity(SerialPort.NO_PARITY);
+        comPort.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED);
+
+        if (!comPort.openPort()) {
+            System.err.println("ERRO CRITICO: A porta " + PORT_NAME + " esta ocupada por outro programa ou nao existe!");
+            return;
+        }
+
+        System.out.println("Porta " + PORT_NAME + " aberta com sucesso pelo Java!");
+
         try {
-            byte[] rawData = textoParaImprimir.getBytes(StandardCharsets.ISO_8859_1);
-            DocFlavor flavor = DocFlavor.BYTE_ARRAY.AUTOSENSE;
-            Doc doc = new SimpleDoc(rawData, flavor, null);
+            comPort.setComPortTimeouts(SerialPort.TIMEOUT_WRITE_BLOCKING, 1000, 0);
 
-            PrintService printService = null;
-            PrintService[] services = PrintServiceLookup.lookupPrintServices(flavor, null);
-            
-            // Procura especificamente pela impressora Bematech e ignora impressoras PDF/XPS
-            for (PrintService service : services) {
-                String nomeImpressora = service.getName().toUpperCase();
-                if (nomeImpressora.contains("BEMATECH") || nomeImpressora.contains("MP-2500")) {
-                    printService = service;
-                    break;
-                }
-            }
+            // Comando ESC/POS para inicializar a impressora
+            byte[] initPrinter = new byte[]{0x1B, 0x40};
+            comPort.writeBytes(initPrinter, initPrinter.length);
 
-            if (printService != null) {
-                DocPrintJob printJob = printService.createPrintJob();
-                PrintRequestAttributeSet pras = new HashPrintRequestAttributeSet();
-                printJob.print(doc, pras);
-                System.out.println("Sucesso: Cupom enviado para a impressora: " + printService.getName());
-            } else {
-                System.err.println("ERRO: A impressora Bematech não foi encontrada nas impressoras instaladas do Windows.");
-            }
+            // Converte o texto para ISO-8859-1 (suporta acentos) e envia
+            byte[] textBytes = textoParaImprimir.getBytes(StandardCharsets.ISO_8859_1);
+            comPort.writeBytes(textBytes, textBytes.length);
 
+            System.out.println("Sucesso: Cupom enviado diretamente para a porta " + PORT_NAME);
         } catch (Exception e) {
-            System.err.println("Erro ao enviar dados para a impressora: " + e.getMessage());
+            System.err.println("Erro ao enviar dados para a impressora serial: " + e.getMessage());
+        } finally {
+            comPort.closePort();
         }
     }
 }
