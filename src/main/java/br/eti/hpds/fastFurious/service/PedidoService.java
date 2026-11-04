@@ -1,5 +1,6 @@
 package br.eti.hpds.fastFurious.service;
 
+import br.eti.hpds.fastFurious.domain.dto.StatusPagamentoPedidoDTO;
 import br.eti.hpds.fastFurious.domain.model.ItemPedido;
 import br.eti.hpds.fastFurious.domain.model.OpcaoPagamento;
 import br.eti.hpds.fastFurious.domain.model.Pedido;
@@ -34,36 +35,47 @@ public class PedidoService {
 
     private final PedidoRepository pedidoRepository;
     private final ProdutoRepository produtoRepository;
-    private final PagamentoTerminal terminal;
+    private final List<PagamentoTerminal> terminais;
     private final ObjectProvider<ImpressoraCupom> impressora;
     private final TransactionTemplate tx;
     private final String lojaId;
+    private final boolean imprimirAoConfirmarDinheiro;
+    private final long toleranciaPixSegundos;
 
-   public PedidoService(PedidoRepository pedidoRepository,
+    public PedidoService(PedidoRepository pedidoRepository,
                          ProdutoRepository produtoRepository,
-                         PagamentoTerminal terminal, // <--- Adicionado o Qualifier aqui
+                         List<PagamentoTerminal> terminais,
                          ObjectProvider<ImpressoraCupom> impressora,
                          PlatformTransactionManager txManager,
-                         @Value("${impressora.loja-id:loja-1}") String lojaId) {
+                         @Value("${impressora.loja-id:loja-1}") String lojaId,
+                         @Value("${impressora.imprimir-ao-confirmar-dinheiro:false}") boolean imprimirAoConfirmarDinheiro,
+                         @Value("${pagamento.pix.tolerancia-segundos:15}") long toleranciaPixSegundos) {
         this.pedidoRepository = pedidoRepository;
         this.produtoRepository = produtoRepository;
-        this.terminal = terminal;
+        this.terminais = terminais;
         this.impressora = impressora;
         this.tx = new TransactionTemplate(txManager);
         this.lojaId = lojaId;
+        this.imprimirAoConfirmarDinheiro = imprimirAoConfirmarDinheiro;
+        this.toleranciaPixSegundos = toleranciaPixSegundos;
     }
 
     // ------------------------------------------------------------------ criação
 
     /**
-     * Cria o pedido como AGUARDANDO_PAGAMENTO, calcula o total no servidor e, se o pagamento
-     * for por cartão/PIX, envia a cobrança à maquininha. Não é @Transactional de propósito:
-     * a chamada HTTP à Cielo não deve segurar uma transação de banco aberta.
+     * Cria o pedido como AGUARDANDO_PAGAMENTO, calcula o total no servidor e:
+     *  - cartão/PIX: inicia a cobrança (no PIX, devolve o QR Code junto com o pedido);
+     *  - dinheiro: imprime na hora o cupom "PAGUE NO CAIXA".
+     * Não é @Transactional de propósito: a chamada HTTP à Cielo não deve segurar uma transação.
      */
     public Pedido criar(Pedido pedido) {
         if (pedido.getListaItens() == null || pedido.getListaItens().isEmpty()) {
             throw new RegraNegocioException(HttpStatus.UNPROCESSABLE_ENTITY, "O pedido precisa ter ao menos um item");
         }
+
+        // Falha cedo (antes de gravar) se a forma de pagamento não tem quem a atenda
+        PagamentoTerminal terminal = pedido.getPagamento() == OpcaoPagamento.DINHEIRO
+                ? null : terminalPara(pedido.getPagamento());
 
         pedido.setId(null);
         pedido.setDataAbertura(LocalDateTime.now());
@@ -71,6 +83,9 @@ public class PedidoService {
         pedido.setDataPagamento(null);
         pedido.setDataCancelado(null);
         pedido.setTransacaoId(null);
+        pedido.setPixCopiaECola(null);
+        pedido.setPixExpiraEm(null);
+        pedido.setPixQrCodeImagem(null);
 
         BigDecimal total = BigDecimal.ZERO;
         for (ItemPedido item : pedido.getListaItens()) {
@@ -101,31 +116,49 @@ public class PedidoService {
 
         Pedido salvo = pedidoRepository.save(pedido);
 
-        if (salvo.getPagamento() != OpcaoPagamento.DINHEIRO) {
-            iniciarCobranca(salvo);
+        if (terminal == null) {
+            // dinheiro: o cliente leva o cupom ao caixa
+            imprimir(montarCupom(salvo, "PAGUE NO CAIXA"));
+        } else {
+            iniciarCobranca(salvo, terminal);
         }
         return salvo;
     }
 
-    private void iniciarCobranca(Pedido pedido) {
+    private void iniciarCobranca(Pedido pedido, PagamentoTerminal terminal) {
         try {
             ResultadoPagamento r = terminal.cobrar(
                     pedido.getValorTotal(), pedido.getPagamento(), String.valueOf(pedido.getId()));
             pedido.setTransacaoId(r.transacaoId());
+            pedido.setPixCopiaECola(r.pixCopiaECola());
+            pedido.setPixExpiraEm(r.pixExpiraEm());
+            pedido.setPixQrCodeImagem(r.pixQrCodeImagem()); // não é gravado; só vai na resposta
             pedidoRepository.save(pedido);
         } catch (RuntimeException e) {
-            log.error("Falha ao enviar a cobrança do pedido {} à maquininha", pedido.getId(), e);
+            log.error("Falha ao iniciar a cobrança do pedido {}", pedido.getId(), e);
             pedido.setStatus(StatusPedido.CANCELADO);
             pedido.setDataCancelado(LocalDateTime.now());
             pedidoRepository.save(pedido);
             throw new RegraNegocioException(HttpStatus.BAD_GATEWAY,
-                    "Não foi possível enviar a cobrança para a maquininha. Tente novamente.");
+                    "Não foi possível iniciar a cobrança. Tente novamente.");
         }
+    }
+
+    private PagamentoTerminal terminalPara(OpcaoPagamento tipo) {
+        // A lista vem ordenada por @Order: o CieloPixPagamento tem prioridade no PIX
+        return terminais.stream()
+                .filter(t -> t.suporta(tipo))
+                .findFirst()
+                .orElseThrow(() -> new RegraNegocioException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Forma de pagamento indisponível: " + tipo));
     }
 
     // ------------------------------------------------------------------ pagamento
 
-    /** Consulta a adquirente e, se o pedido foi pago (ou cancelado lá), atualiza o nosso lado. */
+    /**
+     * Consulta a origem do pagamento. Pago: confirma. Cancelado lá: cancela aqui.
+     * PIX com QR Code vencido (mais a tolerância): cancela o pedido.
+     */
     public void verificarPagamento(Long pedidoId) {
         Pedido pedido = pedidoRepository.findById(pedidoId).orElse(null);
         if (pedido == null
@@ -134,36 +167,53 @@ public class PedidoService {
             return;
         }
 
-        StatusPagamento situacao = terminal.consultar(pedido.getTransacaoId());
+        // Sempre consulta antes de cancelar por expiração: cobre o pagamento no último segundo
+        StatusPagamento situacao = terminalPara(pedido.getPagamento()).consultar(pedido.getTransacaoId());
         if (situacao == StatusPagamento.PAGO) {
             confirmarPagamento(pedidoId);
         } else if (situacao == StatusPagamento.CANCELADO) {
             cancelarSeAguardando(pedidoId);
+        } else if (pixExpirou(pedido)) {
+            log.info("Pedido {}: QR Code Pix expirado sem pagamento; cancelando", pedidoId);
+            cancelarSeAguardando(pedidoId);
         }
     }
+
+    private boolean pixExpirou(Pedido pedido) {
+        return pedido.getPixExpiraEm() != null
+                && LocalDateTime.now().isAfter(pedido.getPixExpiraEm().plusSeconds(toleranciaPixSegundos));
+    }
+
+    private record Confirmacao(boolean confirmada, Cupom cupom) { }
 
     /**
      * Marca o pedido como pago (ABERTO) e imprime o cupom. Idempotente: se o pedido já não está
      * AGUARDANDO_PAGAMENTO, não faz nada. Retorna true se este chamado foi quem confirmou.
      * A impressão acontece DEPOIS do commit: falha na impressora não desfaz o pagamento.
+     * Em dinheiro o cupom já saiu na criação; só imprime de novo se
+     * impressora.imprimir-ao-confirmar-dinheiro=true.
      */
     public boolean confirmarPagamento(Long pedidoId) {
-        Cupom cupom = tx.execute(status -> {
+        Confirmacao c = tx.execute(status -> {
             Pedido p = pedidoRepository.buscarParaAtualizar(pedidoId).orElse(null);
             if (p == null || p.getStatus() != StatusPedido.AGUARDANDO_PAGAMENTO) {
-                return null;
+                return new Confirmacao(false, null);
             }
             p.setStatus(StatusPedido.ABERTO);
             p.setDataPagamento(LocalDateTime.now());
             pedidoRepository.save(p);
-            return montarCupom(p); // monta dentro da transação (itens são lazy)
+
+            boolean imprimir = p.getPagamento() != OpcaoPagamento.DINHEIRO || imprimirAoConfirmarDinheiro;
+            return new Confirmacao(true, imprimir ? montarCupom(p, "PAGO") : null); // itens são lazy
         });
 
-        if (cupom == null) {
+        if (c == null || !c.confirmada()) {
             log.debug("Pedido {} já confirmado (ou inexistente); nada a fazer", pedidoId);
             return false;
         }
-        imprimir(cupom);
+        if (c.cupom() != null) {
+            imprimir(c.cupom());
+        }
         return true;
     }
 
@@ -191,7 +241,61 @@ public class PedidoService {
         }));
     }
 
-    private Cupom montarCupom(Pedido p) {
+    /** O que o totem consulta a cada 3 s. Só lê o banco; quem consulta a Cielo é o poller. */
+    public Optional<StatusPagamentoPedidoDTO> statusDoPagamento(Long pedidoId) {
+        return pedidoRepository.findById(pedidoId).map(p -> {
+            boolean aguardando = p.getStatus() == StatusPedido.AGUARDANDO_PAGAMENTO;
+            return new StatusPagamentoPedidoDTO(
+                    p.getId(),
+                    p.getDataPagamento() != null,
+                    p.getStatus().name(),
+                    p.getPagamento().name(),
+                    aguardando ? p.getPixCopiaECola() : null,
+                    p.getPixExpiraEm(),
+                    p.getDataPagamento());
+        });
+    }
+
+    // ------------------------------------------------------------------ cupom
+
+    /** Cupom do pedido: existe se já foi pago ou se é em dinheiro e ainda está valendo. */
+    public Optional<Cupom> obterCupom(Long pedidoId) {
+        return Optional.ofNullable(tx.execute(status -> {
+            Pedido p = pedidoRepository.findById(pedidoId).orElse(null);
+            if (p == null) {
+                return null;
+            }
+            boolean pago = p.getDataPagamento() != null;
+            boolean dinheiroAberto = p.getPagamento() == OpcaoPagamento.DINHEIRO
+                    && p.getStatus() == StatusPedido.AGUARDANDO_PAGAMENTO;
+            if (!pago && !dinheiroAberto) {
+                throw new RegraNegocioException(HttpStatus.CONFLICT, "O cupom só existe depois do pagamento");
+            }
+            return montarCupom(p, pago ? "PAGO" : "PAGUE NO CAIXA");
+        }));
+    }
+
+    /** Reimprime na impressora do servidor. Devolve false se o pedido não existe. */
+    public boolean reimprimirCupom(Long pedidoId) {
+        Optional<Cupom> cupom = obterCupom(pedidoId);
+        if (cupom.isEmpty()) {
+            return false;
+        }
+        ImpressoraCupom imp = impressora.getIfAvailable();
+        if (imp == null) {
+            throw new RegraNegocioException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Nenhuma impressora configurada no servidor (impressora.modo)");
+        }
+        try {
+            imp.imprimir(cupom.get());
+        } catch (RuntimeException e) {
+            log.error("Falha ao reimprimir o cupom do pedido {}", pedidoId, e);
+            throw new RegraNegocioException(HttpStatus.BAD_GATEWAY, "Falha ao imprimir o cupom");
+        }
+        return true;
+    }
+
+    private Cupom montarCupom(Pedido p, String aviso) {
         List<Cupom.Item> itens = new ArrayList<>();
         for (ItemPedido i : p.getListaItens()) {
             Produto produto = i.getProduto();
@@ -199,7 +303,28 @@ public class PedidoService {
             itens.add(new Cupom.Item(i.getQuantidade() + "x " + nome,
                     i.getvUnit().multiply(BigDecimal.valueOf(i.getQuantidade()))));
         }
-        return new Cupom(lojaId, String.valueOf(p.getId()), itens);
+        return new Cupom(lojaId, String.valueOf(p.getId()), itens, p.getValorTotal(),
+                nomeDaForma(p.getPagamento()), nomeDoConsumo(p), p.getDataAbertura(), aviso);
+    }
+
+    private String nomeDaForma(OpcaoPagamento forma) {
+        return switch (forma) {
+            case PIX -> "PIX";
+            case CARTAO_CREDITO -> "CARTAO DE CREDITO";
+            case CARTAO_DEBITO -> "CARTAO DE DEBITO";
+            case DINHEIRO -> "DINHEIRO";
+        };
+    }
+
+    private String nomeDoConsumo(Pedido p) {
+        if (p.getConsumo() == null) {
+            return null;
+        }
+        return switch (p.getConsumo()) {
+            case LOCAL -> "CONSUMO NO LOCAL";
+            case LEVAR -> "PARA LEVAR";
+            case ENTREGA -> "ENTREGA";
+        };
     }
 
     private void imprimir(Cupom cupom) {
@@ -211,7 +336,7 @@ public class PedidoService {
         try {
             imp.imprimir(cupom);
         } catch (RuntimeException e) {
-            // O pedido já está pago. Só registra; falta uma forma de reimprimir.
+            // O pedido segue válido. Use POST /pedido/{id}/cupom/imprimir para reimprimir.
             log.error("Falha ao imprimir o cupom do pedido {}", cupom.numero(), e);
         }
     }

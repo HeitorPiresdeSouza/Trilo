@@ -7,11 +7,11 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Qualifier;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -23,7 +23,7 @@ import org.springframework.web.client.RestClient;
  * Só é criado com pagamento.terminal=cielo-remoto (o padrão agora é o app da maquininha).
  */
 @Service
-@Qualifier("cieloTerminal")
+@Order(10)
 @ConditionalOnProperty(name = "pagamento.terminal", havingValue = "cielo-remoto")
 public class CieloTerminal implements PagamentoTerminal {
 
@@ -52,6 +52,12 @@ public class CieloTerminal implements PagamentoTerminal {
                 .defaultHeader("access-token", token)
                 .defaultHeader("merchant-id", merchantId)
                 .build();
+    }
+
+    /** Neste modo atende só cartões; o PIX fica com o CieloPixPagamento. */
+    @Override
+    public boolean suporta(OpcaoPagamento tipo) {
+        return tipo == OpcaoPagamento.CARTAO_DEBITO || tipo == OpcaoPagamento.CARTAO_CREDITO;
     }
 
     @Override
@@ -143,4 +149,3 @@ public class CieloTerminal implements PagamentoTerminal {
         throw new UnsupportedOperationException("Cancelamento ainda não implementado");
     }
 }
-

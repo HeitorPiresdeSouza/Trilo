@@ -2,6 +2,7 @@ package br.eti.hpds.fastFurious.domain.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -9,6 +10,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -62,6 +64,20 @@ public class Pedido {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private String transacaoId;
 
+    /** PIX "copia e cola" gerado pela Cielo. O totem pode desenhar o QR Code a partir dele. */
+    @Column(length = 1024)
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String pixCopiaECola;
+
+    /** Quando o QR Code deixa de valer. Depois disso (e da tolerância) o pedido é cancelado. */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private LocalDateTime pixExpiraEm;
+
+    /** Imagem do QR Code em Base64 (PNG). Só vem na resposta da criação; não é gravada no banco. */
+    @Transient
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String pixQrCodeImagem;
+
     public Pedido() {
     }
 
@@ -114,6 +130,15 @@ public class Pedido {
 
     public String getTransacaoId() { return transacaoId; }
     public void setTransacaoId(String transacaoId) { this.transacaoId = transacaoId; }
+
+    public String getPixCopiaECola() { return pixCopiaECola; }
+    public void setPixCopiaECola(String pixCopiaECola) { this.pixCopiaECola = pixCopiaECola; }
+
+    public LocalDateTime getPixExpiraEm() { return pixExpiraEm; }
+    public void setPixExpiraEm(LocalDateTime pixExpiraEm) { this.pixExpiraEm = pixExpiraEm; }
+
+    public String getPixQrCodeImagem() { return pixQrCodeImagem; }
+    public void setPixQrCodeImagem(String pixQrCodeImagem) { this.pixQrCodeImagem = pixQrCodeImagem; }
 
     // equals/hashCode por id (os anteriores incluíam a lista lazy de itens)
     @Override

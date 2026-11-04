@@ -1,11 +1,12 @@
 package br.eti.hpds.fastFurious.controller;
 
 import br.eti.hpds.fastFurious.domain.dto.AtualizaStatusDTO;
+import br.eti.hpds.fastFurious.domain.dto.StatusPagamentoPedidoDTO;
+import br.eti.hpds.fastFurious.impressora.Cupom;
 import br.eti.hpds.fastFurious.domain.model.Pedido;
 import br.eti.hpds.fastFurious.domain.model.StatusPedido;
 import br.eti.hpds.fastFurious.domain.repository.PedidoRepository;
 import br.eti.hpds.fastFurious.service.PedidoService;
-import br.eti.hpds.fastfurious.service.BematechService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -27,10 +28,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 public class PedidoController {
-
-    // Injete o serviço da impressora junto com os outros serviços que você já tem
-    @Autowired
-    private BematechService bematechService;
 
     @Autowired
     private PedidoRepository pedidoRepository;
@@ -72,43 +69,36 @@ public class PedidoController {
         @ApiResponse(responseCode = "404", description = "Not found - The product was not found")}
     )
     public ResponseEntity<List<Pedido>> buscarByStatus(@PathVariable String status) {
+        
+            StatusPedido statusEnum = StatusPedido.valueOf(status.toUpperCase());
 
-        StatusPedido statusEnum = StatusPedido.valueOf(status.toUpperCase());
+            List<Pedido> lista = pedidoRepository.findByStatus(statusEnum);
 
-        List<Pedido> lista = pedidoRepository.findByStatus(statusEnum);
+            if (lista.isEmpty()) {
+                return ResponseEntity.noContent().build();
+            }
 
-        if (lista.isEmpty()) {
-            return ResponseEntity.noContent().build();
-        }
-
-        return ResponseEntity.ok(lista);
+            return ResponseEntity.ok(lista);
     }
 
     @PostMapping("/pedido")
-    @Operation(summary = "Publica um determinado Pedido", description = "Publicação de um Pedido na base de dados e impressão do cupom")
+    @Operation(summary = "Publica um determinada Pedido", description = "Publicação de um Pedido na base de dados")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "201", description = "Successfully posted"),
         @ApiResponse(responseCode = "422", description = "The format is correct, but the data failed the business rule")}
     )
     @ResponseStatus(HttpStatus.CREATED)
-    public Pedido criar(@Valid @RequestBody Pedido pedidoRequest) {
+    public Pedido criar(@Valid @RequestBody Pedido pedido) {
 
-        // 1. Salva o pedido usando a regra de negócio
-        Pedido pedidoSalvo = pedidoService.criar(pedidoRequest);
-
-        try {
-            // 2. Monta o texto do cupom
-            String textoCupom = bematechService.montarTextoCupom(pedidoSalvo);
-            
-            bematechService.imprimirTexto(textoCupom);
-        } catch (Exception e) {
-            System.err.println("Aviso: O pedido foi salvo, mas a impressão falhou: " + e.getMessage());
-        }
-
-        // 4. Retorna o pedido salvo com status 201 Created
-        return pedidoSalvo;
+        return pedidoService.criar(pedido);
     }
 
+    @PutMapping("/pedido/atualizaStatus/{pedidoID}")
+    @Operation(summary = "Atualiza o status de um Pedido determinado ", description = "Atualização de um status na base de dados")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully updated"),
+        @ApiResponse(responseCode = "404", description = "Not found - The product was not found")}
+    )
     public ResponseEntity<Pedido> atualizarStatus(@Valid @PathVariable Long pedidoID,
             @RequestBody AtualizaStatusDTO atualizaStatusDTO) {
 
@@ -154,6 +144,43 @@ public class PedidoController {
         } else {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    @GetMapping("/pedido/{pedidoID}/pagamento")
+    @Operation(summary = "Situação do pagamento", description = "O totem consulta este endereço a cada 3 s até pago=true (ou status CANCELADO)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved"),
+        @ApiResponse(responseCode = "404", description = "Not found - The order was not found")}
+    )
+    public ResponseEntity<StatusPagamentoPedidoDTO> statusDoPagamento(@PathVariable Long pedidoID) {
+        return pedidoService.statusDoPagamento(pedidoID)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/pedido/{pedidoID}/cupom")
+    @Operation(summary = "Conteúdo do cupom", description = "Dados do cupom, para um totem que imprima localmente. Só existe após o pagamento (ou para pedido em dinheiro)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved"),
+        @ApiResponse(responseCode = "404", description = "Not found - The order was not found"),
+        @ApiResponse(responseCode = "409", description = "The order is not paid yet")}
+    )
+    public ResponseEntity<Cupom> cupom(@PathVariable Long pedidoID) {
+        return pedidoService.obterCupom(pedidoID)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/pedido/{pedidoID}/cupom/imprimir")
+    @Operation(summary = "Reimprime o cupom", description = "Imprime de novo, na impressora configurada no servidor")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "204", description = "Printed"),
+        @ApiResponse(responseCode = "404", description = "Not found - The order was not found")}
+    )
+    public ResponseEntity<Void> reimprimirCupom(@PathVariable Long pedidoID) {
+        return pedidoService.reimprimirCupom(pedidoID)
+                ? ResponseEntity.noContent().build()
+                : ResponseEntity.notFound().build();
     }
 
     @DeleteMapping("/pedido/{pedidoID}")

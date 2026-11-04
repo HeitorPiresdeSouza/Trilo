@@ -16,7 +16,9 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long> {
     List<Pedido> findByDataAbertura(LocalDateTime dataAbertura);
 
     List<Pedido> findByStatus(StatusPedido status);
-    
+
+    /** Usada pelo webhook da Cielo para achar o pedido a partir do PaymentId. */
+    Optional<Pedido> findByTransacaoId(String transacaoId);
 
     /** Busca com lock de escrita: impede que dois processos confirmem o mesmo pagamento ao mesmo tempo. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -10,8 +10,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Consulta periodicamente a adquirente para descobrir quais pedidos foram pagos.
- * Serve como fonte principal enquanto não há webhook e continua útil depois como rede de segurança.
+ * Consulta periodicamente a origem do pagamento (Cielo ou o app da maquininha) para descobrir
+ * quais pedidos foram pagos e para cancelar os PIX cujo QR Code expirou. É a fonte principal;
+ * o webhook, quando existir, só acelera.
  */
 @Component
 public class PagamentoPoller {
@@ -26,7 +27,7 @@ public class PagamentoPoller {
         this.pedidoService = pedidoService;
     }
 
-    @Scheduled(fixedDelayString = "${pagamento.polling.intervalo-ms:5000}")
+    @Scheduled(fixedDelayString = "${pagamento.polling.intervalo-ms:3000}")
     public void verificarPendentes() {
         for (Pedido pedido : pedidoRepository.findByStatus(StatusPedido.AGUARDANDO_PAGAMENTO)) {
             if (pedido.getTransacaoId() == null) {

@@ -6,6 +6,7 @@ import br.eti.hpds.fastFurious.service.CobrancaTerminalService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Service;
 
 /**
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
  * É a implementação padrão (pagamento.terminal=app-smart).
  */
 @Service
+@Order(10)
 @ConditionalOnProperty(name = "pagamento.terminal", havingValue = "app-smart", matchIfMissing = true)
 public class TerminalAppPagamento implements PagamentoTerminal {
 
@@ -22,6 +24,12 @@ public class TerminalAppPagamento implements PagamentoTerminal {
 
     public TerminalAppPagamento(CobrancaTerminalService cobrancas) {
         this.cobrancas = cobrancas;
+    }
+
+    /** Cartões e, se o PIX pela API não estiver configurado, o PIX gerado na própria maquininha. */
+    @Override
+    public boolean suporta(OpcaoPagamento tipo) {
+        return tipo != OpcaoPagamento.DINHEIRO;
     }
 
     @Override
@@ -58,4 +66,3 @@ public class TerminalAppPagamento implements PagamentoTerminal {
         throw new UnsupportedOperationException("Cancelamento ainda não implementado");
     }
 }
-
