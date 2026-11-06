@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -168,6 +169,19 @@ public class PedidoController {
     public ResponseEntity<Cupom> cupom(@PathVariable Long pedidoID) {
         return pedidoService.obterCupom(pedidoID)
                 .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/pedido/{pedidoID}/cupom/escpos")
+    @Operation(summary = "Cupom em ESC/POS", description = "Bytes prontos para enviar à impressora térmica ligada ao totem (application/octet-stream)")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "Successfully retrieved"),
+        @ApiResponse(responseCode = "404", description = "Not found - The order was not found"),
+        @ApiResponse(responseCode = "409", description = "The order is not paid yet")}
+    )
+    public ResponseEntity<byte[]> cupomEscPos(@PathVariable Long pedidoID) {
+        return pedidoService.obterCupomEscPos(pedidoID)
+                .map(bytes -> ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).body(bytes))
                 .orElse(ResponseEntity.notFound().build());
     }
 

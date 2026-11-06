@@ -6,6 +6,6 @@ public enum StatusCobranca {
     EM_ANDAMENTO,  // o app buscou e abriu a tela de pagamento da Cielo
     PAGA,          // pagamento aprovado, valor igual ao esperado
     RECUSADA,      // recusado, cancelado pelo cliente ou erro
+    EXPIRADA,      // venceu sem resposta (ou o pedido foi cancelado antes de o app buscar)
     PARCIAL        // valor pago diferente do esperado: exige tratamento manual
 }
-

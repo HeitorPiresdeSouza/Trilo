@@ -72,7 +72,8 @@ public class TerminalController {
 
         CobrancaTerminal c = cobrancas.registrarResultado(id, dto);
         if (c.getStatus() == StatusCobranca.PAGA) {
-            pedidos.confirmarPagamento(c.getPedidoId()); // idempotente
+            // idempotente; se o pedido foi cancelado por tempo, reabre (o dinheiro já foi recebido)
+            pedidos.confirmarPagamentoRecebido(c.getPedidoId());
         }
         return ResponseEntity.ok().build();
     }

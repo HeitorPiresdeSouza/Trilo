@@ -44,7 +44,7 @@ public class TerminalAppPagamento implements PagamentoTerminal {
         return cobrancas.buscar(transacaoId)
                 .map(c -> switch (c.getStatus()) {
                     case PAGA -> StatusPagamento.PAGO;
-                    case RECUSADA -> StatusPagamento.CANCELADO;
+                    case RECUSADA, EXPIRADA -> StatusPagamento.CANCELADO;
                     default -> StatusPagamento.PENDENTE; // PENDENTE, EM_ANDAMENTO e PARCIAL (manual)
                 })
                 .orElse(StatusPagamento.PENDENTE);

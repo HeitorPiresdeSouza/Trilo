@@ -5,11 +5,13 @@ import br.eti.hpds.fastFurious.domain.model.ItemPedido;
 import br.eti.hpds.fastFurious.domain.model.OpcaoPagamento;
 import br.eti.hpds.fastFurious.domain.model.Pedido;
 import br.eti.hpds.fastFurious.domain.model.Produto;
+import br.eti.hpds.fastFurious.domain.model.StatusCobranca;
 import br.eti.hpds.fastFurious.domain.model.StatusPedido;
 import br.eti.hpds.fastFurious.domain.repository.PedidoRepository;
 import br.eti.hpds.fastFurious.domain.repository.ProdutoRepository;
 import br.eti.hpds.fastFurious.exceptionhandler.RegraNegocioException;
 import br.eti.hpds.fastFurious.impressora.Cupom;
+import br.eti.hpds.fastFurious.impressora.CupomEscPos;
 import br.eti.hpds.fastFurious.impressora.ImpressoraCupom;
 import br.eti.hpds.fastFurious.pagamento.PagamentoTerminal;
 import br.eti.hpds.fastFurious.pagamento.ResultadoPagamento;
@@ -41,6 +43,8 @@ public class PedidoService {
     private final String lojaId;
     private final boolean imprimirAoConfirmarDinheiro;
     private final long toleranciaPixSegundos;
+    private final CobrancaTerminalService cobrancas;
+    private final String modoImpressora;
 
     public PedidoService(PedidoRepository pedidoRepository,
                          ProdutoRepository produtoRepository,
@@ -49,7 +53,9 @@ public class PedidoService {
                          PlatformTransactionManager txManager,
                          @Value("${impressora.loja-id:loja-1}") String lojaId,
                          @Value("${impressora.imprimir-ao-confirmar-dinheiro:false}") boolean imprimirAoConfirmarDinheiro,
-                         @Value("${pagamento.pix.tolerancia-segundos:15}") long toleranciaPixSegundos) {
+                         @Value("${pagamento.pix.tolerancia-segundos:15}") long toleranciaPixSegundos,
+                         CobrancaTerminalService cobrancas,
+                         @Value("${impressora.modo:}") String modoImpressora) {
         this.pedidoRepository = pedidoRepository;
         this.produtoRepository = produtoRepository;
         this.terminais = terminais;
@@ -58,6 +64,8 @@ public class PedidoService {
         this.lojaId = lojaId;
         this.imprimirAoConfirmarDinheiro = imprimirAoConfirmarDinheiro;
         this.toleranciaPixSegundos = toleranciaPixSegundos;
+        this.cobrancas = cobrancas;
+        this.modoImpressora = modoImpressora;
     }
 
     // ------------------------------------------------------------------ criação
@@ -187,17 +195,40 @@ public class PedidoService {
     private record Confirmacao(boolean confirmada, Cupom cupom) { }
 
     /**
-     * Marca o pedido como pago (ABERTO) e imprime o cupom. Idempotente: se o pedido já não está
-     * AGUARDANDO_PAGAMENTO, não faz nada. Retorna true se este chamado foi quem confirmou.
-     * A impressão acontece DEPOIS do commit: falha na impressora não desfaz o pagamento.
-     * Em dinheiro o cupom já saiu na criação; só imprime de novo se
-     * impressora.imprimir-ao-confirmar-dinheiro=true.
+     * Pagamento confirmado por CONSULTA (PIX, ou cartão pelo poller): só aceita pedido
+     * AGUARDANDO_PAGAMENTO. Idempotente: se já não está, não faz nada. Retorna true se este
+     * chamado foi quem confirmou.
      */
     public boolean confirmarPagamento(Long pedidoId) {
+        return confirmar(pedidoId, false);
+    }
+
+    /**
+     * Pagamento confirmado pelo RESULTADO real da maquininha. Aceita também um pedido CANCELADO
+     * que nunca foi pago (cancelado por tempo ou pelo cliente): o dinheiro já foi recebido, então
+     * o pedido é reaberto em vez de ser perdido.
+     */
+    public boolean confirmarPagamentoRecebido(Long pedidoId) {
+        return confirmar(pedidoId, true);
+    }
+
+    /**
+     * Marca o pedido como pago (ABERTO) e prepara o cupom. A impressão pelo servidor acontece
+     * DEPOIS do commit: falha na impressora não desfaz o pagamento. Em dinheiro o cupom já saiu
+     * na criação; só sai outro se impressora.imprimir-ao-confirmar-dinheiro=true.
+     */
+    private boolean confirmar(Long pedidoId, boolean aceitaCancelado) {
         Confirmacao c = tx.execute(status -> {
             Pedido p = pedidoRepository.buscarParaAtualizar(pedidoId).orElse(null);
-            if (p == null || p.getStatus() != StatusPedido.AGUARDANDO_PAGAMENTO) {
+            boolean aguardando = p != null && p.getStatus() == StatusPedido.AGUARDANDO_PAGAMENTO;
+            boolean reabrir = p != null && aceitaCancelado
+                    && p.getStatus() == StatusPedido.CANCELADO && p.getDataPagamento() == null;
+            if (p == null || (!aguardando && !reabrir)) {
                 return new Confirmacao(false, null);
+            }
+            if (reabrir) {
+                log.warn("Pedido {}: pagamento recebido depois do cancelamento; pedido reaberto", pedidoId);
+                p.setDataCancelado(null);
             }
             p.setStatus(StatusPedido.ABERTO);
             p.setDataPagamento(LocalDateTime.now());
@@ -208,7 +239,7 @@ public class PedidoService {
         });
 
         if (c == null || !c.confirmada()) {
-            log.debug("Pedido {} já confirmado (ou inexistente); nada a fazer", pedidoId);
+            log.debug("Pedido {} não está aguardando pagamento; nada a fazer", pedidoId);
             return false;
         }
         if (c.cupom() != null) {
@@ -250,10 +281,34 @@ public class PedidoService {
                     p.getDataPagamento() != null,
                     p.getStatus().name(),
                     p.getPagamento().name(),
+                    etapaDoPagamento(p),
+                    p.getValorTotal(),
                     aguardando ? p.getPixCopiaECola() : null,
                     p.getPixExpiraEm(),
                     p.getDataPagamento());
         });
+    }
+
+    /** O que o totem deve mostrar ao cliente agora (ver StatusPagamentoPedidoDTO). */
+    private String etapaDoPagamento(Pedido p) {
+        if (p.getDataPagamento() != null) {
+            return "PAGO";
+        }
+        if (p.getStatus() == StatusPedido.CANCELADO) {
+            return "CANCELADO";
+        }
+        if (p.getPagamento() == OpcaoPagamento.DINHEIRO) {
+            return "PAGAR_NO_CAIXA";
+        }
+        if (p.getPixCopiaECola() != null) {
+            return "AGUARDANDO_PIX";
+        }
+        // cartão (ou PIX na maquininha): a cobrança diz se a tela de pagamento já abriu
+        boolean pagandoNaMaquininha = p.getTransacaoId() != null
+                && cobrancas.buscar(p.getTransacaoId())
+                        .map(c -> c.getStatus() == StatusCobranca.EM_ANDAMENTO)
+                        .orElse(false);
+        return pagandoNaMaquininha ? "PAGANDO_NA_MAQUININHA" : "AGUARDANDO_MAQUININHA";
     }
 
     // ------------------------------------------------------------------ cupom
@@ -295,6 +350,11 @@ public class PedidoService {
         return true;
     }
 
+    /** Cupom em comandos ESC/POS, pronto para o totem enviar à impressora ligada a ele. */
+    public Optional<byte[]> obterCupomEscPos(Long pedidoId) {
+        return obterCupom(pedidoId).map(CupomEscPos::gerar);
+    }
+
     private Cupom montarCupom(Pedido p, String aviso) {
         List<Cupom.Item> itens = new ArrayList<>();
         for (ItemPedido i : p.getListaItens()) {
@@ -330,7 +390,12 @@ public class PedidoService {
     private void imprimir(Cupom cupom) {
         ImpressoraCupom imp = impressora.getIfAvailable();
         if (imp == null) {
-            log.warn("Nenhuma impressora configurada (impressora.modo); cupom do pedido {} não foi impresso", cupom.numero());
+            if ("totem".equalsIgnoreCase(modoImpressora)) {
+                log.debug("Impressora no totem: cupom do pedido {} disponível em GET /pedido/{}/cupom/escpos",
+                        cupom.numero(), cupom.numero());
+            } else {
+                log.warn("Nenhuma impressora configurada (impressora.modo); cupom do pedido {} não foi impresso", cupom.numero());
+            }
             return;
         }
         try {
@@ -370,6 +435,9 @@ public class PedidoService {
             }
             pedidoAntigo.setStatus(StatusPedido.CANCELADO);
             pedidoAntigo.setDataCancelado(LocalDateTime.now());
+            if (pedidoAntigo.getTransacaoId() != null) {
+                cobrancas.cancelarSePendente(pedidoAntigo.getTransacaoId());
+            }
 
         } else {
             throw new RegraNegocioException(HttpStatus.CONFLICT,
