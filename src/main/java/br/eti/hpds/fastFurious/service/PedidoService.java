@@ -291,6 +291,12 @@ public class PedidoService {
 
     /** O que o totem deve mostrar ao cliente agora (ver StatusPagamentoPedidoDTO). */
     private String etapaDoPagamento(Pedido p) {
+        if (p.getStatus() == StatusPedido.ESTORNADO) {
+            return "ESTORNADO";
+        }
+        if (p.getStatus() == StatusPedido.ESTORNO_PENDENTE) {
+            return "ESTORNO_EM_ANDAMENTO";
+        }
         if (p.getDataPagamento() != null) {
             return "PAGO";
         }
@@ -319,6 +325,9 @@ public class PedidoService {
             Pedido p = pedidoRepository.findById(pedidoId).orElse(null);
             if (p == null) {
                 return null;
+            }
+            if (p.getStatus() == StatusPedido.ESTORNADO || p.getStatus() == StatusPedido.ESTORNO_PENDENTE) {
+                throw new RegraNegocioException(HttpStatus.CONFLICT, "Pedido estornado: não há cupom");
             }
             boolean pago = p.getDataPagamento() != null;
             boolean dinheiroAberto = p.getPagamento() == OpcaoPagamento.DINHEIRO
@@ -431,7 +440,7 @@ public class PedidoService {
             if (pedidoAntigo.getDataPagamento() != null) {
                 // pedido já pago: cancelar sem estornar deixaria o cliente sem o dinheiro
                 throw new RegraNegocioException(HttpStatus.CONFLICT,
-                        "Pedido já pago: o estorno ainda não está implementado");
+                        "Pedido já pago: use POST /pedido/{id}/estorno para devolver o valor");
             }
             pedidoAntigo.setStatus(StatusPedido.CANCELADO);
             pedidoAntigo.setDataCancelado(LocalDateTime.now());

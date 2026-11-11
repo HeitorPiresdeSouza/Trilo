@@ -4,6 +4,7 @@ import br.eti.hpds.fastFurious.domain.model.Pedido;
 import br.eti.hpds.fastFurious.domain.model.StatusPedido;
 import br.eti.hpds.fastFurious.domain.repository.PedidoRepository;
 import br.eti.hpds.fastFurious.service.CobrancaTerminalService;
+import br.eti.hpds.fastFurious.service.EstornoService;
 import br.eti.hpds.fastFurious.service.PedidoService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,13 +24,16 @@ public class PagamentoPoller {
     private final PedidoRepository pedidoRepository;
     private final PedidoService pedidoService;
     private final CobrancaTerminalService cobrancas;
+    private final EstornoService estornos;
 
     public PagamentoPoller(PedidoRepository pedidoRepository,
                            PedidoService pedidoService,
-                           CobrancaTerminalService cobrancas) {
+                           CobrancaTerminalService cobrancas,
+                           EstornoService estornos) {
         this.pedidoRepository = pedidoRepository;
         this.pedidoService = pedidoService;
         this.cobrancas = cobrancas;
+        this.estornos = estornos;
     }
 
     @Scheduled(fixedDelayString = "${pagamento.polling.intervalo-ms:3000}")
@@ -38,6 +42,12 @@ public class PagamentoPoller {
             cobrancas.expirarVencidas();
         } catch (Exception e) {
             log.warn("Falha ao expirar cobranças de cartão: {}", e.toString());
+        }
+
+        try {
+            estornos.processarPendentes();
+        } catch (Exception e) {
+            log.warn("Falha ao processar estornos pendentes: {}", e.toString());
         }
 
         for (Pedido pedido : pedidoRepository.findByStatus(StatusPedido.AGUARDANDO_PAGAMENTO)) {

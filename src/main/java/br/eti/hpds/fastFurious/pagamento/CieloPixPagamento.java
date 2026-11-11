@@ -124,10 +124,39 @@ public class CieloPixPagamento implements PagamentoTerminal {
         };
     }
 
+    /**
+     * Solicita a devolução do PIX: PUT /1/sales/{PaymentId}/void?amount={centavos}.
+     * A Cielo responde que a devolução foi SOLICITADA; ela só termina quando o status do
+     * pagamento passa a 11 (veja devolucaoConcluida). Segundo a documentação, a conta precisa
+     * estar habilitada para devolução de PIX e o prazo é de até 90 dias.
+     */
+    public void devolver(String paymentId, long centavos) {
+        Map<String, Object> resposta = transacao.put()
+                .uri("/1/sales/{id}/void?amount={valor}", paymentId, centavos)
+                .retrieve().body(MAPA);
+
+        if (resposta != null) {
+            Object codigo = resposta.get("ProviderReturnCode");
+            if (codigo != null && !"0".equals(String.valueOf(codigo))) {
+                throw new IllegalStateException("Cielo recusou a devolução: "
+                        + resposta.get("ProviderReturnMessage"));
+            }
+        }
+    }
+
+    /** A devolução terminou? O status do pagamento na Cielo vira 11 (estornado). */
+    public boolean devolucaoConcluida(String paymentId) {
+        Map<String, Object> resposta = consulta.get().uri("/1/sales/{id}", paymentId)
+                .retrieve().body(MAPA);
+        return resposta != null
+                && resposta.get("Payment") instanceof Map<?, ?> pagamento
+                && "11".equals(String.valueOf(pagamento.get("Status")));
+    }
+
     @Override
     public void cancelar(String transacaoId) {
-        // O QR Code expira sozinho (cielo.pix.expiracao-segundos). Remover/estornar na Cielo
-        // ainda não está implementado.
-        throw new UnsupportedOperationException("Cancelamento de PIX ainda não implementado");
+        // O QR Code expira sozinho (cielo.pix.expiracao-segundos). A devolução de um PIX já
+        // pago é feita pelo EstornoService (devolver).
+        throw new UnsupportedOperationException("Use o EstornoService para devolver um PIX pago");
     }
 }

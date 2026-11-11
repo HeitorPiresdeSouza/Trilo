@@ -5,5 +5,7 @@ public enum StatusPedido {
     ABERTO,               // pago: entra na fila da cozinha
     PRONTO,
     ENTREGUE,
-    CANCELADO
+    CANCELADO,            // cancelado sem ter sido pago
+    ESTORNO_PENDENTE,     // pago, estorno solicitado e ainda não concluído (sai da cozinha)
+    ESTORNADO             // pago e devolvido ao cliente
 }

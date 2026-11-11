@@ -83,6 +83,7 @@ public class CobrancaTerminalService {
             c.setMensagem(dto.mensagem());
             c.setAuthCode(dto.authCode());
             c.setNsu(dto.nsu());
+            c.setOrdemId(dto.ordemId());
             c.setBandeira(dto.bandeira());
             c.setValorPagoCentavos(dto.valorPagoCentavos());
             c.setAtualizadaEm(LocalDateTime.now());

@@ -28,6 +28,7 @@ public class CobrancaTerminal {
     private Long valorPagoCentavos;
     private String authCode;
     private String nsu;
+    private String ordemId;   // id da ordem na Cielo, usado no cancelamento (estorno)
     private String bandeira;
     private String mensagem;
 
@@ -64,6 +65,9 @@ public class CobrancaTerminal {
     public String getNsu() { return nsu; }
     public void setNsu(String nsu) { this.nsu = nsu; }
 
+    public String getOrdemId() { return ordemId; }
+    public void setOrdemId(String ordemId) { this.ordemId = ordemId; }
+
     public String getBandeira() { return bandeira; }
     public void setBandeira(String bandeira) { this.bandeira = bandeira; }
 
@@ -75,4 +79,3 @@ public class CobrancaTerminal {
     public LocalDateTime getAtualizadaEm() { return atualizadaEm; }
     public void setAtualizadaEm(LocalDateTime atualizadaEm) { this.atualizadaEm = atualizadaEm; }
 }
-

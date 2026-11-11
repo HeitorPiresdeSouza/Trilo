@@ -41,6 +41,9 @@ public class Pedido {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private LocalDateTime dataPagamento;
 
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private LocalDateTime dataEstorno;
+
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ItemPedido> listaItens;
 
@@ -112,6 +115,9 @@ public class Pedido {
 
     public LocalDateTime getDataPagamento() { return dataPagamento; }
     public void setDataPagamento(LocalDateTime dataPagamento) { this.dataPagamento = dataPagamento; }
+
+    public LocalDateTime getDataEstorno() { return dataEstorno; }
+    public void setDataEstorno(LocalDateTime dataEstorno) { this.dataEstorno = dataEstorno; }
 
     public List<ItemPedido> getListaItens() { return listaItens; }
     public void setListaItens(List<ItemPedido> listaItens) { this.listaItens = listaItens; }

@@ -9,5 +9,6 @@ public record ResultadoTerminalDTO(
         String authCode,
         String nsu,
         String bandeira,
-        String mensagem) {
+        String mensagem,
+        String ordemId) {   // id da ordem na Cielo: necessário para estornar depois
 }
